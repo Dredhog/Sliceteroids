@@ -1,11 +1,13 @@
 #if !defined(FUNCTIONS_H)
 #define FUNCTIONS_H
 
-internal simulation_asteroid SimulationAsteroidMemory[ASTEROID_MAX_COUNT];;
-internal shape_asteroid LocalAsteroidPolygonMemory[ASTEROID_MAX_COUNT];
-internal screen_asteroid ScreenAsteroidPolygonMemory[ASTEROID_MAX_COUNT];
-internal int32 AsteroidVertCountMemory[ASTEROID_MAX_COUNT];
-internal projectile ProjectileMemory[PROJECTILE_MAX_COUNT];
+#include "platform.h"
+#include "game.h"
+#include "globals.h"
+#include "vec2.h"
+#include <SDL.h>
+#include <assert.h>
+#include <stdio.h>
 
 //SPACE_SHIP
 internal space_ship
@@ -21,12 +23,11 @@ CreateSpaceShip()
 }
 
 internal void
-SimulateSpaceShip(space_ship *SpaceShip)
+SimulateSpaceShip(space_ship *SpaceShip, const game_input *Input)
 {
-	static int MouseX, MouseY;
-	SDL_GetMouseState(&MouseX, &MouseY);
+	vec2f mouse_pos_v = vec2f{(real32)Input->MouseX, (real32)Input->MouseY};
 
-	vec2f mouse_pos_v = vec2f{ (float)MouseX, (float)MouseY };
+	SpaceShip->IsAccelerating = Input->Space.EndedDown;
 
 	SpaceShip->Dir = mouse_pos_v - SpaceShip->P;
 	SpaceShip->Dir.Normalize();
@@ -164,7 +165,7 @@ CreateSimAsteroid(int initial_x, int initial_y, float vel_x, float vel_y)
 	Result.P = vec2f{ (float)initial_x, (float)initial_y };
 	Result.dP = vec2f{ vel_x, vel_y };
 	Result.Radius = ASTEROID_RADIUS;
-	Result.AngularVelocity = (rand() % 200 - 100) / 100.0;
+	Result.AngularVelocity = (rand() % 200 - 100.f) / 100.0;
 	return Result;
 }
 
@@ -421,6 +422,10 @@ RotateAndTranslateAsteroidsToScreen(game_state *GameState, shape_asteroid *Input
 	vec2f NewUnitY;
 
 	for (int AsteroidIndex = 0; AsteroidIndex < GameState->AsteroidCount; AsteroidIndex++) {
+		if(VertCounts[AsteroidIndex] > ASTEROID_MAX_VERT_COUNT){
+				DestroyAsteroid(GameState, AsteroidIndex);
+				AsteroidIndex--;
+		}
 		Cosine = cos(AngleRad*SimAsteroids[AsteroidIndex].AngularVelocity);
 		Sine = sin(AngleRad*SimAsteroids[AsteroidIndex].AngularVelocity); 
 		NewUnitX = vec2f{ Cosine,  Sine};
@@ -447,17 +452,25 @@ DrawAsteroids(SDL_Renderer *Renderer, screen_asteroid *ScreenAsteroids, int *Ver
 }
 
 internal void
-InitGameState(game_state *GameState)
+InitGameState(game_state *GameState, void *MemoryEnd)
 {
-	GameState->ProjectileCapacity = sizeof(ProjectileMemory) / sizeof(projectile);
-	GameState->AsteroidCapacity = sizeof(SimulationAsteroidMemory) / sizeof(simulation_asteroid);
+	assert(GameState);
+	char *BaseAddress = ((char*)GameState) + sizeof(game_state);
 
-	GameState->SimAsteroids = SimulationAsteroidMemory;
-	GameState->LocalAsteroids = LocalAsteroidPolygonMemory;
-	GameState->ScreenAsteroids = ScreenAsteroidPolygonMemory;
-	GameState->AsteroidVertCounts = AsteroidVertCountMemory;
-	GameState->Projectiles = ProjectileMemory;
+	assert( (BaseAddress + sizeof(game_state) +	PROJECTILE_MAX_COUNT*sizeof(projectile) +
+			ASTEROID_MAX_COUNT*(sizeof(simulation_asteroid) + sizeof(shape_asteroid) + sizeof(screen_asteroid) + 4) ) <= (char*)MemoryEnd);
 	GameState->Player = CreateSpaceShip();
+
+	GameState->Projectiles = (projectile*)BaseAddress;
+	GameState->SimAsteroids = (simulation_asteroid*)(GameState->Projectiles + PROJECTILE_MAX_COUNT);
+	GameState->LocalAsteroids = (shape_asteroid*)(GameState->SimAsteroids + ASTEROID_MAX_COUNT);
+	GameState->ScreenAsteroids = (screen_asteroid*)(GameState->LocalAsteroids + ASTEROID_MAX_COUNT);
+	GameState->AsteroidVertCounts = (int32*)(GameState->ScreenAsteroids + ASTEROID_MAX_COUNT);
+
+	GameState->AsteroidCapacity = ASTEROID_MAX_COUNT; 
+	GameState->ProjectileCapacity = PROJECTILE_MAX_COUNT;
+	GameState->AsteroidCount = 0;
+	GameState->ProjectileCount = 0;
 }
 
 internal void
@@ -470,7 +483,8 @@ NewGame(game_state *GameState)
 	GameState->Player.P = vec2f{ SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 };
 	GameState->Player.dP = vec2f{ 0, 0 };
 	GameState->Player.Lives = PLAYER_MAX_LIVES;
-	srand(time(nullptr));
+	//In wanting to make the game deterministic
+	srand(0);
 
 	for (int Index = 0; Index < INITIAL_ASTEROID_COUNT; Index++)
 	{
@@ -481,9 +495,9 @@ NewGame(game_state *GameState)
 		} while (sqrt((SCREEN_WIDTH / 2 - x)*(SCREEN_WIDTH / 2 - x) + (SCREEN_HEIGHT / 2 - y)*(SCREEN_HEIGHT / 2 - y)) <=
 			SAFEZONE_RADIUS + ASTEROID_RADIUS);
 
-	int AdditionalVerts = rand() % ((ASTEROID_MAX_VERT_COUNT - ASTEROID_MINIMUM_VERT_COUNT > 0)
-									? ASTEROID_MAX_VERT_COUNT - ASTEROID_MINIMUM_VERT_COUNT
-									: 1);
+		int AdditionalVerts = rand() % ((ASTEROID_MAX_VERT_COUNT - ASTEROID_MINIMUM_VERT_COUNT > 0)
+										? ASTEROID_MAX_VERT_COUNT - ASTEROID_MINIMUM_VERT_COUNT
+										: 1);
 		GameState->AsteroidVertCounts[Index] = ASTEROID_MINIMUM_VERT_COUNT + AdditionalVerts;
 		simulation_asteroid newSimAsteroid = CreateSimAsteroid(x, y, (rand() % 200 - 100) / 100.f, (rand() % 200 - 100) / 100.f);
 		shape_asteroid newAsteroidShape = CreateAsteroidShape(GameState->AsteroidVertCounts[Index]);
@@ -492,26 +506,28 @@ NewGame(game_state *GameState)
 	}
 }
 
-internal void
-UpdateAndRender(game_memory *Memory, platform_state *Platform)
+void
+UpdateAndRender(game_memory *Memory, platform_state *Platform, game_input *Input)
 {
 	game_state *GameState = (game_state*)Memory->BaseAddress;
-	if(!Memory->IsGameStateInitialized){
-		InitGameState(GameState);
+	if(GameState->MagicChecksum != 11789){
+		InitGameState(GameState, (char*)Memory->BaseAddress + Memory->Size);
 		NewGame(GameState);
+		GameState->MagicChecksum = 11789;
 	}
 
 	SDL_SetRenderDrawColor(Platform->Renderer, 20, 20, 20, 255);
 	SDL_RenderClear(Platform->Renderer);
+
 	SDL_SetRenderDrawColor(Platform->Renderer, 255, 255, 255, 255);
 	SDL_RenderDrawRect(Platform->Renderer, &Platform->screen_outline);
 
 	{
-		SimulateSpaceShip(&GameState->Player);
-		if (GameState->UseRappidFire)
-		{
+		SimulateSpaceShip(&GameState->Player, Input);
+		if(Input->MouseLeft.EndedDown || (Input->MouseRight.EndedDown && Input->MouseRight.Changed)){
 			AddProjectile(GameState, CreateProjectile(GameState->Player.P, GameState->Player.Dir));
 		}
+
 		UpdateAndRenderProjectiles(GameState, Platform->Renderer, GameState->Projectiles);
 		CollideAsteroidsWithProjectiles(GameState, GameState->SimAsteroids, GameState->Projectiles);
 		MoveAsteroids(GameState, GameState->SimAsteroids, &GameState->Player);

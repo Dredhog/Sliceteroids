@@ -1,6 +1,8 @@
 #ifndef TIMER_H
 #define TIMER_H
 
+#include <SDL.h>
+
 struct Timer
 {
 private:

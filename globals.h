@@ -17,13 +17,13 @@ static const float PLAYER_DECELERATION{ 0.0225f };
 static const int   SAFEZONE_RADIUS{ 100 };
 
 //Projectiles
-static const int   PROJECTILE_MAX_COUNT{ 100 };
+static const int   PROJECTILE_MAX_COUNT{ 200 };
 static const float PROJECTILE_SPEED{ 10 };
 static const int   PROJECTILE_LENGTH{ 15 };
 static const int   PROJECTILE_OFFSET{ 20 };//The distance from which the projectile begins relative to the players center
 
 //Asteroids
-static const int   	INITIAL_ASTEROID_COUNT{ 10 };
+static const int   	INITIAL_ASTEROID_COUNT{ 5 };
 static const int	ASTEROID_MAX_COUNT{ 1000 };
 static const int   	ASTEROID_RADIUS{ 100 };
 static const int   	ASTEROID_MIN_RADIUS{ 30 };

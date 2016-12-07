@@ -1,6 +1,10 @@
 #if !defined(TYPES_H)
 #define TYPES_H
 
+#include "vec2.h"
+#include "platform.h"
+#include "globals.h"
+
 struct projectile {
 	vec2f P;
 	vec2f dP;
@@ -52,6 +56,10 @@ struct game_state
 	int32 				ProjectileCapacity;
 	bool32				Started;
 	bool32 				UseRappidFire{ false };
+	uint32				MagicChecksum;
 };
+
+void
+UpdateAndRender(game_memory *Memory, platform_state *Platform, game_input *Input);
 
 #endif //TYPES_H

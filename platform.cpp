@@ -1,5 +1,4 @@
 #include <SDL.h>
-#include "timer.cpp"
 #include <random>
 #include "vec2.h"
 #include "assert.h"
@@ -8,9 +7,10 @@
 #include "globals.h"
 #include "platform.h"
 #include "game.h"
-#include "game.cpp"
 #include "immintrin.h"
+#include "circular_buffer.h"
 #include <sys/mman.h>
+//#include <Windows.h>
 
 internal bool32
 InitPlatform(platform_state *Platform)
@@ -27,66 +27,73 @@ InitPlatform(platform_state *Platform)
 		printf("Renderer creation error: %s\n", SDL_GetError());
 		return false;
 	}
+	Platform->Running = true;
 	return true;
 }
 
 internal void
-InitGameMemory(game_memory *GameMemory){
-	GameMemory->Size = Megabytes(64);
+AllocateGameMemory(game_memory *GameMemory) {
+	GameMemory->Size = Megabytes(1);
 	GameMemory->BaseAddress = (void*)Gigabytes(10);
-	GameMemory->BaseAddress = mmap(	GameMemory->BaseAddress, GameMemory->Size,
-							PROT_READ | PROT_WRITE,
-							MAP_ANONYMOUS | MAP_PRIVATE,
-							-1, 0);
+	//LPVOID BaseAddress = (LPVOID*)Gigabytes(10);
+	GameMemory->BaseAddress = mmap(GameMemory->BaseAddress, GameMemory->Size, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+	//GameMemory->BaseAddress = VirtualAlloc(BaseAddress, GameMemory->Size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 }
 
-internal void
-HandleEvents(game_state *GameState, SDL_Event* e)
+internal bool32
+ProcessInput(game_input *OldInput, game_input *NewInput, SDL_Event* Event)
 {
-	if (e->type == SDL_QUIT)
+	*NewInput = *OldInput;
+	while (SDL_PollEvent(Event) != 0)
 	{
-		//GameState->Running = false;
-	}
-	if (e->type == SDL_KEYDOWN && e->key.repeat == 0)
-	{
-		switch (e->key.keysym.sym)
-		{
-		case SDLK_ESCAPE:
-			//GameState->Running = false; break;
-		case SDLK_SPACE:
-			GameState->Player.IsAccelerating = true;
-		}
-	}
-	if (e->type == SDL_KEYUP && e->key.repeat == 0)
-	{
-		switch (e->key.keysym.sym)
-		{
-		case SDLK_SPACE:
-			GameState->Player.IsAccelerating = false;
-		}
-	}
-	if (e->type == SDL_MOUSEBUTTONDOWN)
-	{
-		switch (e->button.button)
-		{
-		case(SDL_BUTTON_LEFT) :
-			GameState->UseRappidFire = true;
+		switch (Event->type) {
+		case SDL_QUIT:
+			return false;
+		case SDL_KEYDOWN:
+			if (Event->key.keysym.sym == SDLK_ESCAPE) {
+				NewInput->Escape.EndedDown = true;
+				return false;
+			}
+			else if (Event->key.keysym.sym == SDLK_SPACE) {
+				NewInput->Space.EndedDown = true;
+			}
+			else if (Event->key.keysym.sym == SDLK_p) {
+				NewInput->p.EndedDown = true;
+			}
 			break;
-		case(SDL_BUTTON_RIGHT) :
-			AddProjectile(GameState, CreateProjectile(GameState->Player.P,
-				GameState->Player.Dir));
+		case SDL_KEYUP:
+			if (Event->key.keysym.sym == SDLK_SPACE) {
+				NewInput->Space.EndedDown = false;
+			}
+			else if (Event->key.keysym.sym == SDLK_p) {
+				NewInput->p.EndedDown = false;
+			}
+			break;
+		case SDL_MOUSEBUTTONDOWN:
+			if (Event->button.button == SDL_BUTTON_LEFT) {
+				NewInput->MouseLeft.EndedDown = true;
+			}
+			else if (Event->button.button == SDL_BUTTON_RIGHT) {
+				NewInput->MouseRight.EndedDown = true;
+			}
+			break;
+		case SDL_MOUSEBUTTONUP:
+			if (Event->button.button == SDL_BUTTON_LEFT) {
+				NewInput->MouseLeft.EndedDown = false;
+			}
+			else if (Event->button.button == SDL_BUTTON_RIGHT) {
+				NewInput->MouseRight.EndedDown = false;
+			}
 			break;
 		}
 	}
-	if (e->type == SDL_MOUSEBUTTONUP)
-	{
-		switch (e->button.button)
-		{
-		case(SDL_BUTTON_LEFT) :
-			GameState->UseRappidFire = false;
-			break;
-		}
+	SDL_GetMouseState(&NewInput->MouseX, &NewInput->MouseY);
+
+	for (int Index = 0; Index < 5; Index++) {
+		NewInput->Buttons[Index].Changed = (OldInput->Buttons[Index].EndedDown ==
+			NewInput->Buttons[Index].EndedDown) ? false : true;
 	}
+	return true;
 }
 
 internal void
@@ -101,29 +108,53 @@ CleanUp(platform_state *Platform)
 }
 
 
-int main(int argc, char *args[])
+int main(int Count, char *Arguments[])
 {
-	platform_state PlatformState = {};
-	assert(InitPlatform(&PlatformState));
+	platform_state Platform = {};
+	assert(InitPlatform(&Platform));
 
-	game_memory GameMemory  = {};
-	InitGameMemory(&GameMemory);
+	game_memory GameMemory = {};
+	AllocateGameMemory(&GameMemory);
 	assert(GameMemory.BaseAddress);
 
-	while (true)
-	{
-		PlatformState.FPS.start();
-		while (SDL_PollEvent(&PlatformState.Event) != 0)
-		{
-			HandleEvents(&GameMemory, &PlatformState.Event);
-		}
-		UpdateAndRender(&GameMemory, &PlatformState, &CurrentInput);
+	playback_buffer PlaybackBuffer = NewPlaybackBuffer(500, 10, GameMemory.Size);
 
-		SDL_Delay(FRAME_DURATION - ((PlatformState.FPS.get_time() <= FRAME_DURATION) ? PlatformState.FPS.get_time() : FRAME_DURATION));
-		PlatformState.FPS.update_avg_fps();
+	game_input OldInput = {};
+	game_input NewInput = {};
+
+	while (Platform.Running)
+	{
+		Platform.FPS.start();
+
+		Platform.Running = ProcessInput(&OldInput, &NewInput, &Platform.Event);
+		if (NewInput.p.EndedDown && NewInput.p.Changed) {
+			Platform.PlaybackStarted = !Platform.PlaybackStarted;
+			if (!Platform.PlaybackStarted) {
+				ClearPlaybackBuffer(&PlaybackBuffer);
+				for(int ButtonIndex = 0; ButtonIndex < 6; ButtonIndex++){
+					NewInput.Buttons[ButtonIndex].EndedDown = false;
+					NewInput.Buttons[ButtonIndex].Changed = false;
+				}
+			}
+		}
+
+		if (Platform.PlaybackStarted) {
+			PeekAndStepPlaybackBuffer(&PlaybackBuffer, &NewInput, GameMemory.BaseAddress, Platform.FrameCount);
+		}
+		else {
+			PushPlaybackBuffer(&PlaybackBuffer, &NewInput, GameMemory.BaseAddress, Platform.FrameCount);
+		}
+
+		UpdateAndRender(&GameMemory, &Platform, &NewInput);
+
+		SDL_Delay(FRAME_DURATION - ((Platform.FPS.get_time() <= FRAME_DURATION) ? Platform.FPS.get_time() : FRAME_DURATION));
+		Platform.FPS.update_avg_fps();
+
+		OldInput = NewInput;
+		Platform.FrameCount++;
 	}
 
-	CleanUp(&PlatformState);
+	CleanUp(&Platform);
 	return 0;
 }
 

@@ -1,9 +1,17 @@
 #if !defined(PLATFORM_H)
 #define PLATFORM_H
 
+#include <stdint.h>
+#include "timer.h"
+#include "globals.h"
+
 #define internal static
 #define local_persist static
 #define global_variable static
+
+#define Kilobytes(Count) ((Count)*1024ll)
+#define Megabytes(Count) (Kilobytes(Count)*1024ll)
+#define Gigabytes(Count) (Megabytes(Count)*1024ll)
 
 typedef int8_t int8;
 typedef int16_t int16;
@@ -14,29 +22,49 @@ typedef uint8_t uint8;
 typedef uint16_t uint16;
 typedef uint32_t uint32;
 typedef uint64_t uint64;
+typedef int8 bool8;
 typedef int32 bool32;
 
 typedef float real32;
 typedef double real64;
 
 
-#define Kilobytes(Count) ((Count)*1024ll)
-#define Megabytes(Count) (Kilobytes(Count)*1024ll)
-#define Gigabytes(Count) (Megabytes(Count)*1024ll)
+struct game_button_state{
+	bool8	EndedDown;
+	bool8 	Changed;
+};
+
+struct game_input{
+	int32				MouseX;
+	int32				MouseY;
+
+	union{
+		game_button_state Buttons[5];
+		struct{
+			game_button_state 	p;
+			game_button_state 	Space;
+			game_button_state 	MouseLeft;
+			game_button_state 	MouseRight;
+			game_button_state 	Escape;
+		};
+	};
+};
 
 struct game_memory{
 	void 	*BaseAddress;
-	uint64	Size;
-	bool32 	IsGameStateInitialized;
+	uint32	Size;
+	//bool32 	IsGameStateInitialized;
 };
 
 struct platform_state{
+	SDL_Renderer*	Renderer;
+	SDL_Window*		Window;
 	SDL_Event 		Event;
 	Timer 			FPS;
-	SDL_Window*		Window;
-	SDL_Renderer*	Renderer;
 	SDL_Rect 		screen_outline{ 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT };
-	bool32 	GlobalRunning;
+	bool32 			Running;
+	bool32			PlaybackStarted;
+	uint32			FrameCount;
 };
 
 #endif //PLATFORM_H
