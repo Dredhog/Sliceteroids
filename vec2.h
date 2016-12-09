@@ -49,35 +49,35 @@ struct vec2 {
 		return *this;
 	}
 
-	vec2 operator+(double s) const {
+	vec2 operator+(T s) const {
 		return vec2(X + s, Y + s);
 	}
-	vec2 operator-(double s) const {
+	vec2 operator-(T s) const {
 		return vec2(X - s, Y - s);
 	}
-	vec2 operator*(double s) const {
+	vec2 operator*(T s) const {
 		return vec2(X * s, Y * s);
 	}
-	vec2 operator/(double s) const {
+	vec2 operator/(T s) const {
 		return vec2(X / s, Y / s);
 	}
 
-	vec2& operator+=(double s) {
+	vec2& operator+=(T s) {
 		X += s;
 		Y += s;
 		return *this;
 	}
-	vec2& operator-=(double s) {
+	vec2& operator-=(T s) {
 		X -= s;
 		Y -= s;
 		return *this;
 	}
-	vec2& operator*=(double s) {
+	vec2& operator*=(T s) {
 		X *= s;
 		Y *= s;
 		return *this;
 	}
-	vec2& operator/=(double s) {
+	vec2& operator/=(T s) {
 		X /= s;
 		Y /= s;
 		return *this;
@@ -88,26 +88,26 @@ struct vec2 {
 		this->Y = Y;
 	}
 
-	static float Length(vec2 V) {
+	static T Length(vec2 V) {
 		return std::sqrt(V.X * V.X + V.Y * V.Y);
 	}
 
 
-	void rotate(double deg) {
-		double theta = deg / 180.0 * M_PI;
-		double c = cos(theta);
-		double s = sin(theta);
-		double tX = X * c - Y * s;
-		double tY = X * s + Y * c;
+	void rotate(T deg) {
+		T theta = deg / 180.0 * M_PI;
+		T c = cos(theta);
+		T s = sin(theta);
+		T tX = X * c - Y * s;
+		T tY = X * s + Y * c;
 		X = tX;
 		Y = tY;
 	}
-	vec2 rotated(double deg) const {
-		double theta = deg / 180.0 * M_PI;
-		double c = cos(theta);
-		double s = sin(theta);
-		double tX = X * c - Y * s;
-		double tY = X * s + Y * c;
+	vec2 rotated(T deg) const {
+		T theta = deg / 180.0 * M_PI;
+		T c = cos(theta);
+		T s = sin(theta);
+		T tX = X * c - Y * s;
+		T tY = X * s + Y * c;
 		return vec2(tX, tY);
 	}
 
@@ -128,8 +128,8 @@ struct vec2 {
 		return d.length();
 	}
 
-	void truncate(double length) {
-		double angle = atan2f(Y, X);
+	void truncate(T length) {
+		T angle = atan2f(Y, X);
 		X = length * cos(angle);
 		Y = length * sin(angle);
 	}
@@ -193,6 +193,7 @@ inline bool IsPointAboveLine(const vec2f& P1, const vec2f& P2, const vec2f& P)
 	}
 	return false;
 }
+
 inline vec2f GetAverageP(const vec2f Verts[], int n)
 {
 	vec2f AverageP = vec2f{ 0, 0 };
@@ -200,7 +201,7 @@ inline vec2f GetAverageP(const vec2f Verts[], int n)
 	{
 		AverageP += Verts[i];
 	}
-	AverageP /= n;
+	AverageP /= (float)n;
 	return AverageP;
 }
 

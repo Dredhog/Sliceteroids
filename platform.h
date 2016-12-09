@@ -1,9 +1,11 @@
 #if !defined(PLATFORM_H)
 #define PLATFORM_H
 
+/*
 #include <stdint.h>
 #include "timer.h"
 #include "globals.h"
+*/
 
 #define internal static
 #define local_persist static
@@ -52,7 +54,7 @@ struct game_input{
 
 struct game_memory{
 	void 	*BaseAddress;
-	uint32	Size;
+	uint64	Size;
 	//bool32 	IsGameStateInitialized;
 };
 

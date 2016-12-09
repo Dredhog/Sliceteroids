@@ -117,3 +117,12 @@ ClearPlaybackBuffer(playback_buffer *B) {
 	B->StateEnd = 0;
 	B->StateCount = 0;
 }
+
+internal void
+DestroyPlaybackBuffer(playback_buffer *Buffer)
+{
+	assert(Buffer->Inputs);
+	assert(Buffer->States);
+	free(Buffer->Inputs);
+	free(Buffer->States);
+}

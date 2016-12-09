@@ -1,6 +1,7 @@
 #if !defined(FUNCTIONS_H)
 #define FUNCTIONS_H
 
+/*
 #include "platform.h"
 #include "game.h"
 #include "globals.h"
@@ -8,6 +9,8 @@
 #include <SDL.h>
 #include <assert.h>
 #include <stdio.h>
+#include <x86intrin.h>
+*/
 
 //SPACE_SHIP
 internal space_ship
@@ -121,8 +124,7 @@ IsInBounds(vec2f P)
 	{
 		return false;
 	}
-	return true;
-}
+	return true; }
 
 internal inline vec2f
 GetProjectileEndP(projectile Projectile) {
@@ -130,9 +132,9 @@ GetProjectileEndP(projectile Projectile) {
 }
 
 internal void
-UpdateAndRenderProjectiles(game_state *GameState, SDL_Renderer *Renderer, projectile *Projectiles)
+SimulateAndDrawProjectiles(game_state *GameState, SDL_Renderer *Renderer, projectile *Projectiles)
 {
-	for (int Index = 0; Index < GameState->ProjectileCount;) {
+	for (uint32 Index = 0; Index < GameState->ProjectileCount;) {
 		Projectiles[Index].P += Projectiles[Index].dP;
 
 		if (IsInBounds(GameState->Projectiles[Index].P)) {
@@ -149,41 +151,64 @@ UpdateAndRenderProjectiles(game_state *GameState, SDL_Renderer *Renderer, projec
 	}
 }
 
-bool
-TestProjectileAsteroid(projectile Projectile, simulation_asteroid Asteroid){
-	if(vec2f::Length(Projectile.P - Asteroid.P) < Asteroid.Radius + PROJECTILE_LENGTH){
-		return true;	
+internal bool
+TestProjectileAsteroid(projectile Projectile, simulation_asteroid *Asteroid){
+	if((real32)vec2f::Length(Projectile.P - Asteroid->P) < Asteroid->Radius + PROJECTILE_LENGTH){
+		vec2f p0 = Projectile.P - Asteroid->P;
+		vec2f p1 = Projectile.P + Projectile.Dir - Asteroid->P;
+
+		uint32 count = 0;
+		for(uint32 Index = 0; Index < Asteroid->VertCount; Index++) {
+			if(IsPointAboveLine(p0, p1, Asteroid->Verts[Index])){
+				count++;
+			}
+		}
+		if(count != 0 && count != Asteroid->VertCount){
+			return true;
+		}
 	}
 	return false;
 }
 
 //ASTEROIDS
 internal simulation_asteroid
-CreateSimAsteroid(int initial_x, int initial_y, float vel_x, float vel_y)
+CreateSimAsteroid(int32 initial_x, int32 initial_y, real32 vel_x, real32 vel_y)
 {
-	simulation_asteroid Result;
-	Result.P = vec2f{ (float)initial_x, (float)initial_y };
+	simulation_asteroid Result = {};
+	Result.P = vec2f{ (real32)initial_x, (real32)initial_y };
 	Result.dP = vec2f{ vel_x, vel_y };
 	Result.Radius = ASTEROID_RADIUS;
-	Result.AngularVelocity = (rand() % 200 - 100.f) / 100.0;
-	return Result;
-}
+	Result.AngularVelocity = ((real32)(rand() % 200) - 100.f) / 100.f;
 
-shape_asteroid
-CreateAsteroidShape(int VertCount) {
-	shape_asteroid Result;
-	//Assign the initial vertex locations
-	for (int i = 0; i < VertCount; ++i)
+	uint32 AdditionalVerts = rand() % ((ASTEROID_MAX_VERT_COUNT - ASTEROID_MINIMUM_VERT_COUNT > 0)
+									? ASTEROID_MAX_VERT_COUNT - ASTEROID_MINIMUM_VERT_COUNT : 1);
+	Result.VertCount = ASTEROID_MINIMUM_VERT_COUNT + AdditionalVerts;
+
+	for (uint32 i = 0; i < Result.VertCount; ++i)
 	{
-		//Set the initial points for the asteroid polygon
-		Result.Verts[i].X = ASTEROID_RADIUS*cos(2 * M_PI*((i + 1.0 + (rand() % 50 - 25) / 100.0) / (VertCount)));
-		Result.Verts[i].Y = ASTEROID_RADIUS*sin(2 * M_PI*((i + 1.0 + (rand() % 50 - 25) / 100.0) / (VertCount)));
+		Result.Verts[i].X = (real32)(ASTEROID_RADIUS*cos(2 * M_PI*((i + 1.0 + (rand() % 50 - 25) / 100.0) / (int32)(Result.VertCount))));
+		Result.Verts[i].Y = (real32)(ASTEROID_RADIUS*sin(2 * M_PI*((i + 1.0 + (rand() % 50 - 25) / 100.0) / (int32)(Result.VertCount))));
 	}
 	return Result;
 }
 
+internal inline void
+DestroyAsteroid(game_state *GameState, uint32 Index) {
+	assert(Index >= 0 && Index < GameState->AsteroidCount && GameState->AsteroidCount > 0);
+	--GameState->AsteroidCount;
+	GameState->SimAsteroids[Index] = GameState->SimAsteroids[GameState->AsteroidCount];
+	GameState->ScreenAsteroids[Index] = GameState->ScreenAsteroids[GameState->AsteroidCount];
+}
 /*
-simulation_asteroid
+internal inline void
+AddAsteroid(game_state *GameState, simulation_asteroid SimAsteroid, shape_asteroid ShapeAsteroid) {
+	assert(GameState->AsteroidCount < GameState->AsteroidCapacity);
+	GameState->SimAsteroids[GameState->AsteroidCount] = SimAsteroid;
+	GameState->LocalAsteroids[GameState->AsteroidCount] = ShapeAsteroid;
+	GameState->AsteroidCount++;
+}*/
+/*
+internal simulation_asteroid
 CreateAsteroid(const simulation_asteroid *parent, float angle)
 {
 	assert(&parent);
@@ -205,81 +230,59 @@ CreateAsteroid(const simulation_asteroid *parent, float angle)
 }
 */
 
-
-inline void
-DestroyAsteroid(game_state *GameState, int Index) {
-	assert(Index >= 0 && Index < GameState->AsteroidCount && GameState->AsteroidCount > 0);
-	--GameState->AsteroidCount;
-	GameState->AsteroidVertCounts[Index] = GameState->AsteroidVertCounts[GameState->AsteroidCount];
-	GameState->LocalAsteroids[Index] = GameState->LocalAsteroids[GameState->AsteroidCount];
-	GameState->SimAsteroids[Index] = GameState->SimAsteroids[GameState->AsteroidCount];
-}
-/*
-inline void
-AddAsteroid(game_state *GameState, simulation_asteroid SimAsteroid, shape_asteroid ShapeAsteroid) {
+internal inline void
+AddAsteroid(game_state *GameState, simulation_asteroid SimAsteroid) {
 	assert(GameState->AsteroidCount < GameState->AsteroidCapacity);
-	GameState->SimAsteroids[GameState->AsteroidCount] = SimAsteroid;
-	GameState->LocalAsteroids[GameState->AsteroidCount] = ShapeAsteroid;
-	GameState->AsteroidCount++;
-}*/
-
-inline void
-AddAsteroid(game_state *GameState, simulation_asteroid SimAsteroid, shape_asteroid ShapeAsteroid, int VertCount) {
-	assert(GameState->AsteroidCount < GameState->AsteroidCapacity);
-	GameState->SimAsteroids[GameState->AsteroidCount] = SimAsteroid;
-	GameState->LocalAsteroids[GameState->AsteroidCount] = ShapeAsteroid;
-	GameState->AsteroidVertCounts[GameState->AsteroidCount] = VertCount;
-	GameState->AsteroidCount++;
+	GameState->SimAsteroids[GameState->AsteroidCount++] = SimAsteroid;
 }
 
-inline void
-SetAsteroid(game_state *GameState, int Index, simulation_asteroid SimAsteroid, shape_asteroid ShapeAsteroid, int VertCount) {
+internal inline void
+SetAsteroid(game_state *GameState, uint32 Index, simulation_asteroid SimAsteroid) {
 	assert(Index >= 0 && Index < GameState->AsteroidCount);
 	GameState->SimAsteroids[Index] = SimAsteroid;
-	GameState->LocalAsteroids[Index] = ShapeAsteroid;
-	GameState->AsteroidVertCounts[Index] = VertCount;
 }
 
-inline void
+internal inline void
 TakePlayerLife(game_state *GameState) {
 	GameState->Player.Lives--;
 	GameState->Player.P.X = SCREEN_WIDTH / 2;  GameState->Player.dP.X = 0.0;
 	GameState->Player.P.Y = SCREEN_HEIGHT / 2; GameState->Player.dP.Y = 0.0;
 }
 
-void
-MoveAsteroids(game_state *GameState, simulation_asteroid *SimAsteroids, space_ship *Player) {
+internal void
+SimulateAsteroidsCollidePlayer(game_state *GameState, simulation_asteroid *SimAsteroids, space_ship *Player) {
 	vec2f PlayerP = Player->P;
-	float PlayerRadius = Player->Radius;
+	real32 PlayerRadius = Player->Radius;
 
-	for (int Index = 0; Index < GameState->AsteroidCount;) {
+	for (uint32 Index = 0; Index < GameState->AsteroidCount;) {
 		simulation_asteroid *Asteroid = SimAsteroids + Index;
-		if(Asteroid->Radius < ASTEROID_MIN_RADIUS){
+		if(Asteroid->Radius < ASTEROID_MIN_RADIUS || Asteroid->VertCount > ASTEROID_MAX_VERT_COUNT){
 			DestroyAsteroid(GameState, Index);
 			continue;
 		}
+
 		Asteroid->P += Asteroid->dP;
 		
 		//Looping in the X direction
 		if (Asteroid->P.X + Asteroid->Radius < 0 && Asteroid->dP.X < 0)
 		{
-			Asteroid->P.X = SCREEN_WIDTH + Asteroid->Radius;
+			Asteroid->P.X = (real32)(SCREEN_WIDTH + Asteroid->Radius);
 		}
 		else if (Asteroid->P.X - Asteroid->Radius > SCREEN_WIDTH && Asteroid->dP.X > 0)
 		{
-			Asteroid->P.X = -Asteroid->Radius;
+			Asteroid->P.X = (real32)-Asteroid->Radius;
 		}
 		//Looping in the Y direction
 		if (Asteroid->P.Y + Asteroid->Radius < 0 && Asteroid->dP.Y < 0)
 		{
-			Asteroid->P.Y = SCREEN_HEIGHT + Asteroid->Radius;
+			Asteroid->P.Y = (real32)(SCREEN_HEIGHT + Asteroid->Radius);
 		}
 		else if (Asteroid->P.Y - Asteroid->Radius > SCREEN_HEIGHT && Asteroid->dP.Y > 0)
 		{
-			Asteroid->P.Y = -Asteroid->Radius;
+			Asteroid->P.Y = (real32)-Asteroid->Radius;
 		}
 
-		if (vec2f::Length(PlayerP - Asteroid->P) < Asteroid->Radius + PlayerRadius)
+		if ((int32)vec2f::Length(PlayerP - Asteroid->P) < Asteroid->Radius + PlayerRadius)
 		{
 			TakePlayerLife(GameState);
 		}
@@ -289,119 +292,113 @@ MoveAsteroids(game_state *GameState, simulation_asteroid *SimAsteroids, space_sh
 
 }
 
-inline void
+internal inline void
 AddAsteroidTopSplit(game_state *GameState, int ParentIndex, projectile Projectile)
 {
 	simulation_asteroid *SimParent = GameState->SimAsteroids + ParentIndex;
-	shape_asteroid *ShapeParent = GameState->LocalAsteroids + ParentIndex;
-	int ParentVertCount = GameState->AsteroidVertCounts[ParentIndex];
-
 	simulation_asteroid SimResult = *SimParent;
-	shape_asteroid ShapeResult = *ShapeParent;
 
 	//Create the Projectiles' lines' points in the asteroids coordinate system
 	vec2f P1 = Projectile.P - SimResult.P;
 	vec2f P2 = GetProjectileEndP(Projectile) - SimResult.P;
 
-	int VertCount = 0;
+	uint32 VertCount = 0;
 	//If the first point is above the line, add it to the point array
-	if (IsPointAboveLine(P1, P2, ShapeParent->Verts[0]))
+	if (IsPointAboveLine(P1, P2, SimParent->Verts[0]))
 	{
-		ShapeResult.Verts[VertCount++] = ShapeParent->Verts[0];
+		SimResult.Verts[VertCount++] = SimParent->Verts[0];
 	}
-	for (int i = 1; i < ParentVertCount; i++)
+	for (uint32 i = 1; i < SimParent->VertCount; i++)
 	{
-		if (IsPointAboveLine(P1, P2, ShapeParent->Verts[i]) != IsPointAboveLine(P1, P2, ShapeParent->Verts[i - 1]))
+		if (IsPointAboveLine(P1, P2, SimParent->Verts[i]) != IsPointAboveLine(P1, P2, SimParent->Verts[i - 1]))
 		{
-			ShapeResult.Verts[VertCount++] = GetIntersection(P1, P2, ShapeParent->Verts[i], ShapeParent->Verts[i - 1]);
+			SimResult.Verts[VertCount++] = GetIntersection(P1, P2, SimParent->Verts[i], SimParent->Verts[i - 1]);
 		}
-		if (IsPointAboveLine(P1, P2, ShapeParent->Verts[i]))
+		if (IsPointAboveLine(P1, P2, SimParent->Verts[i]))
 		{
-			ShapeResult.Verts[VertCount++] = ShapeParent->Verts[i];
+			SimResult.Verts[VertCount++] = SimParent->Verts[i];
 		}
 	}
-	if (IsPointAboveLine(P1, P2, ShapeParent->Verts[0]) != IsPointAboveLine(P1, P2, ShapeParent->Verts[ParentVertCount - 1]))
+	if (IsPointAboveLine(P1, P2, SimParent->Verts[0]) != IsPointAboveLine(P1, P2, SimParent->Verts[SimParent->VertCount - 1]))
 	{
-		ShapeResult.Verts[VertCount++] = GetIntersection(P1, P2, ShapeParent->Verts[0], ShapeParent->Verts[ParentVertCount - 1]);
+		SimResult.Verts[VertCount++] = GetIntersection(P1, P2, SimParent->Verts[0], SimParent->Verts[SimParent->VertCount - 1]);
 	}
 
 	if (VertCount < 1){
 		return;
 	}
+	SimResult.VertCount = VertCount;
 
-	vec2f CenterOfMass = GetAverageP(ShapeResult.Verts, VertCount);
+	vec2f CenterOfMass = GetAverageP(SimResult.Verts, SimResult.VertCount);
 	SimResult.P = SimParent->P + CenterOfMass;
 	SimResult.Radius = 0;
-	for (int i = 0; i < VertCount; i++)
+	for (uint32 i = 0; i < SimResult.VertCount; i++)
 	{
-		ShapeResult.Verts[i] -= CenterOfMass;
-		float VertOffsetFromCOM = vec2f::Length(ShapeResult.Verts[i]);
+		SimResult.Verts[i] -= CenterOfMass;
+		real32 VertOffsetFromCOM = vec2f::Length(SimResult.Verts[i]);
 		if (VertOffsetFromCOM > SimResult.Radius) {
 			SimResult.Radius = VertOffsetFromCOM;
 		}
 	}
-	AddAsteroid(GameState, SimResult, ShapeResult, VertCount);
+	AddAsteroid(GameState, SimResult);
 }
 
-inline void
+internal inline void
 AddAsteroidBottomSplit(game_state *GameState, int ParentIndex, projectile Projectile)
 {
 	simulation_asteroid *SimParent = GameState->SimAsteroids + ParentIndex;
-	shape_asteroid *ShapeParent = GameState->LocalAsteroids + ParentIndex;
-	int ParentVertCount = GameState->AsteroidVertCounts[ParentIndex];
-
 	simulation_asteroid SimResult = *SimParent;
-	shape_asteroid ShapeResult = *ShapeParent;
 
 	//Create the Projectiles' lines' points in the asteroids coordinate system
 	vec2f P1 = Projectile.P - SimResult.P;
 	vec2f P2 = GetProjectileEndP(Projectile) - SimResult.P;
 
-	int VertCount = 0;
+	uint32 VertCount = 0;
 	//If the first point is above the line, add it to the point array
-	if (!IsPointAboveLine(P1, P2, ShapeParent->Verts[0]))
+	if (!IsPointAboveLine(P1, P2, SimParent->Verts[0]))
 	{
-		ShapeResult.Verts[VertCount++] = ShapeParent->Verts[0];
+		SimResult.Verts[VertCount++] = SimParent->Verts[0];
 	}
-	for (int i = 1; i < ParentVertCount; i++)
+	for (uint32 i = 1; i < SimParent->VertCount; i++)
 	{
-		if ((IsPointAboveLine(P1, P2, ShapeParent->Verts[i]) != IsPointAboveLine(P1, P2, ShapeParent->Verts[i - 1])))
+		if ((IsPointAboveLine(P1, P2, SimParent->Verts[i]) != IsPointAboveLine(P1, P2, SimParent->Verts[i - 1])))
 		{
-			ShapeResult.Verts[VertCount++] = GetIntersection(P1, P2, ShapeParent->Verts[i], ShapeParent->Verts[i - 1]);
+			SimResult.Verts[VertCount++] = GetIntersection(P1, P2, SimParent->Verts[i], SimParent->Verts[i - 1]);
 		}
-		if (!IsPointAboveLine(P1, P2, ShapeParent->Verts[i]))
+		if (!IsPointAboveLine(P1, P2, SimParent->Verts[i]))
 		{
-			ShapeResult.Verts[VertCount++] = ShapeParent->Verts[i];
+			SimResult.Verts[VertCount++] = SimParent->Verts[i];
 		}
 	}
-	if (IsPointAboveLine(P1, P2, ShapeParent->Verts[0]) != IsPointAboveLine(P1, P2, ShapeParent->Verts[ParentVertCount - 1]))
+	if (IsPointAboveLine(P1, P2, SimParent->Verts[0]) != IsPointAboveLine(P1, P2, SimParent->Verts[SimParent->VertCount - 1]))
 	{
-		ShapeResult.Verts[VertCount++] = GetIntersection(P1, P2, ShapeParent->Verts[0], ShapeParent->Verts[ParentVertCount - 1]);
+		SimResult.Verts[VertCount++] = GetIntersection(P1, P2, SimParent->Verts[0], SimParent->Verts[SimParent->VertCount - 1]);
 	}
 
 	if (VertCount < 1){
 		return;
 	}
+	SimResult.VertCount = VertCount;
 
-	vec2f CenterOfMass = GetAverageP(ShapeResult.Verts, VertCount);
+	vec2f CenterOfMass = GetAverageP(SimResult.Verts, SimResult.VertCount);
 	SimResult.P = SimParent->P + CenterOfMass;
 	SimResult.Radius = 0;
-	for (int i = 0; i < VertCount; i++)
+	for (uint32 i = 0; i < SimResult.VertCount; i++)
 	{
-		ShapeResult.Verts[i] -= CenterOfMass;
-		float VertOffsetFromCOM = vec2f::Length(ShapeResult.Verts[i]);
+		SimResult.Verts[i] -= CenterOfMass;
+		real32 VertOffsetFromCOM = vec2f::Length(SimResult.Verts[i]);
 		if (VertOffsetFromCOM > SimResult.Radius) {
 			SimResult.Radius = VertOffsetFromCOM;
 		}
 	}
-	AddAsteroid(GameState, SimResult, ShapeResult, VertCount);
+	AddAsteroid(GameState, SimResult);
 }
 
 internal void
-CollideAsteroidsWithProjectiles(game_state *GameState, simulation_asteroid *SimAsteroids,  projectile *Projectiles){
-	for(int ProjectileIndex = 0; ProjectileIndex < GameState->ProjectileCount; ProjectileIndex++){
-		for(int AsteroidIndex = 0; AsteroidIndex < GameState->AsteroidCount; AsteroidIndex++){
-			if(TestProjectileAsteroid(Projectiles[ProjectileIndex], SimAsteroids[AsteroidIndex])){
+CollideProjectilesWithAsteroids(game_state *GameState, simulation_asteroid *SimAsteroids,  projectile *Projectiles){
+	for(uint32 ProjectileIndex = 0; ProjectileIndex < GameState->ProjectileCount; ProjectileIndex++){
+		for(uint32 AsteroidIndex = 0; AsteroidIndex < GameState->AsteroidCount; AsteroidIndex++){
+			if(TestProjectileAsteroid(Projectiles[ProjectileIndex], &SimAsteroids[AsteroidIndex])){
 				AddAsteroidBottomSplit(GameState, AsteroidIndex, Projectiles[ProjectileIndex]);
 				AddAsteroidTopSplit(GameState, AsteroidIndex, Projectiles[ProjectileIndex]);
 				DestroyAsteroid(GameState, AsteroidIndex);
@@ -413,41 +410,38 @@ CollideAsteroidsWithProjectiles(game_state *GameState, simulation_asteroid *SimA
 	}
 }
 
-void
-RotateAndTranslateAsteroidsToScreen(game_state *GameState, shape_asteroid *Input, simulation_asteroid *SimAsteroids, int *VertCounts, screen_asteroid *Output) {
-	const float AngleRad = M_PI / 180.0;
-	float Cosine;
-	float Sine;
+internal void
+RotateAndTranslateAsteroids(simulation_asteroid *Input, screen_asteroid *Output, uint32 AsteroidCount) {
+	const real32 AngleRad = PI / 180.f;
+	real32 Cosine;
+	real32 Sine;
 	vec2f NewUnitX;
 	vec2f NewUnitY;
 
-	for (int AsteroidIndex = 0; AsteroidIndex < GameState->AsteroidCount; AsteroidIndex++) {
-		if(VertCounts[AsteroidIndex] > ASTEROID_MAX_VERT_COUNT){
-				DestroyAsteroid(GameState, AsteroidIndex);
-				AsteroidIndex--;
-		}
-		Cosine = cos(AngleRad*SimAsteroids[AsteroidIndex].AngularVelocity);
-		Sine = sin(AngleRad*SimAsteroids[AsteroidIndex].AngularVelocity); 
+	for (uint32 AsteroidIndex = 0; AsteroidIndex < AsteroidCount; AsteroidIndex++) {
+		Cosine = (real32)cos(AngleRad*Input[AsteroidIndex].AngularVelocity);
+		Sine = (real32)sin(AngleRad*Input[AsteroidIndex].AngularVelocity); 
 		NewUnitX = vec2f{ Cosine,  Sine};
 		NewUnitY =  vec2f{ -Sine,  Cosine};
-		for (int Index = 0; Index < VertCounts[AsteroidIndex]; ++Index)
+		for (uint32 Index = 0; Index < Input[AsteroidIndex].VertCount; ++Index)
 		{
 			Input[AsteroidIndex].Verts[Index].X = Input[AsteroidIndex].Verts[Index].X*NewUnitX.X + Input[AsteroidIndex].Verts[Index].Y*NewUnitY.X;
 			Input[AsteroidIndex].Verts[Index].Y = Input[AsteroidIndex].Verts[Index].X*NewUnitX.Y + Input[AsteroidIndex].Verts[Index].Y*NewUnitY.Y;
-			Output[AsteroidIndex].Verts[Index].x = SimAsteroids[AsteroidIndex].P.X + Input[AsteroidIndex].Verts[Index].X;
-			Output[AsteroidIndex].Verts[Index].y = SimAsteroids[AsteroidIndex].P.Y + Input[AsteroidIndex].Verts[Index].Y;
+			Output[AsteroidIndex].Verts[Index].x = (int32)(Input[AsteroidIndex].P.X + Input[AsteroidIndex].Verts[Index].X);
+			Output[AsteroidIndex].Verts[Index].y = (int32)(Input[AsteroidIndex].P.Y + Input[AsteroidIndex].Verts[Index].Y);
 		}
+		Output[AsteroidIndex].VertCount = Input[AsteroidIndex].VertCount;
 	}
 }
 
 void
-DrawAsteroids(SDL_Renderer *Renderer, screen_asteroid *ScreenAsteroids, int *VertCounts, int Count)
+RenderAsteroids(SDL_Renderer *Renderer, screen_asteroid *ScreenAsteroids, uint32 Count)
 {
-	for (int Index = 0; Index < Count; Index++) {
-		assert(VertCounts[Index] <= ASTEROID_MAX_VERT_COUNT);
+	for (uint32 Index = 0; Index < Count; Index++) {
+		assert(ScreenAsteroids[Index].VertCount <= ASTEROID_MAX_VERT_COUNT);
 
-		ScreenAsteroids[Index].Verts[VertCounts[Index]] = ScreenAsteroids[Index].Verts[0];
-		SDL_RenderDrawLines(Renderer, ScreenAsteroids[Index].Verts, VertCounts[Index] + 1);
+		ScreenAsteroids[Index].Verts[ScreenAsteroids[Index].VertCount] = ScreenAsteroids[Index].Verts[0];
+		SDL_RenderDrawLines(Renderer, ScreenAsteroids[Index].Verts, ScreenAsteroids[Index].VertCount + 1);
 	}
 }
 
@@ -456,16 +450,14 @@ InitGameState(game_state *GameState, void *MemoryEnd)
 {
 	assert(GameState);
 	char *BaseAddress = ((char*)GameState) + sizeof(game_state);
+	assert((BaseAddress + sizeof(game_state) +	PROJECTILE_MAX_COUNT*sizeof(projectile) +
+			ASTEROID_MAX_COUNT*(sizeof(simulation_asteroid) + sizeof(screen_asteroid))) <= (char*)MemoryEnd);
 
-	assert( (BaseAddress + sizeof(game_state) +	PROJECTILE_MAX_COUNT*sizeof(projectile) +
-			ASTEROID_MAX_COUNT*(sizeof(simulation_asteroid) + sizeof(shape_asteroid) + sizeof(screen_asteroid) + 4) ) <= (char*)MemoryEnd);
 	GameState->Player = CreateSpaceShip();
 
 	GameState->Projectiles = (projectile*)BaseAddress;
 	GameState->SimAsteroids = (simulation_asteroid*)(GameState->Projectiles + PROJECTILE_MAX_COUNT);
-	GameState->LocalAsteroids = (shape_asteroid*)(GameState->SimAsteroids + ASTEROID_MAX_COUNT);
-	GameState->ScreenAsteroids = (screen_asteroid*)(GameState->LocalAsteroids + ASTEROID_MAX_COUNT);
-	GameState->AsteroidVertCounts = (int32*)(GameState->ScreenAsteroids + ASTEROID_MAX_COUNT);
+	GameState->ScreenAsteroids = (screen_asteroid*)(GameState->SimAsteroids + ASTEROID_MAX_COUNT);
 
 	GameState->AsteroidCapacity = ASTEROID_MAX_COUNT; 
 	GameState->ProjectileCapacity = PROJECTILE_MAX_COUNT;
@@ -479,14 +471,13 @@ NewGame(game_state *GameState)
 	GameState->ProjectileCount = 0;
 	GameState->AsteroidCount = 0;
 
-	printf("NEW GAME! Player'S LIVES: %d\n", GameState->Player.Lives);
+	//printf("NEW GAME! Player'S LIVES: %d\n", GameState->Player.Lives);
 	GameState->Player.P = vec2f{ SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 };
 	GameState->Player.dP = vec2f{ 0, 0 };
 	GameState->Player.Lives = PLAYER_MAX_LIVES;
-	//In wanting to make the game deterministic
-	srand(0);
+	srand(0); //Makeing the game deterministic for replay
 
-	for (int Index = 0; Index < INITIAL_ASTEROID_COUNT; Index++)
+	for (uint32 Index = 0; Index < INITIAL_ASTEROID_COUNT; Index++)
 	{
 		int x, y;
 		do {
@@ -495,20 +486,16 @@ NewGame(game_state *GameState)
 		} while (sqrt((SCREEN_WIDTH / 2 - x)*(SCREEN_WIDTH / 2 - x) + (SCREEN_HEIGHT / 2 - y)*(SCREEN_HEIGHT / 2 - y)) <=
 			SAFEZONE_RADIUS + ASTEROID_RADIUS);
 
-		int AdditionalVerts = rand() % ((ASTEROID_MAX_VERT_COUNT - ASTEROID_MINIMUM_VERT_COUNT > 0)
-										? ASTEROID_MAX_VERT_COUNT - ASTEROID_MINIMUM_VERT_COUNT
-										: 1);
-		GameState->AsteroidVertCounts[Index] = ASTEROID_MINIMUM_VERT_COUNT + AdditionalVerts;
-		simulation_asteroid newSimAsteroid = CreateSimAsteroid(x, y, (rand() % 200 - 100) / 100.f, (rand() % 200 - 100) / 100.f);
-		shape_asteroid newAsteroidShape = CreateAsteroidShape(GameState->AsteroidVertCounts[Index]);
-		
-		AddAsteroid(GameState, newSimAsteroid, newAsteroidShape, GameState->AsteroidVertCounts[Index]);
+		simulation_asteroid newSimAsteroid = CreateSimAsteroid(x, y, (real32)(rand() % 200 - 100) / 100.f, (real32)(rand() % 200 - 100) / 100.f);
+		AddAsteroid(GameState, newSimAsteroid);
 	}
 }
 
 void
 UpdateAndRender(game_memory *Memory, platform_state *Platform, game_input *Input)
 {
+	BEGIN_TIMED_BLOCK(UpdateAndRender);
+
 	game_state *GameState = (game_state*)Memory->BaseAddress;
 	if(GameState->MagicChecksum != 11789){
 		InitGameState(GameState, (char*)Memory->BaseAddress + Memory->Size);
@@ -522,26 +509,46 @@ UpdateAndRender(game_memory *Memory, platform_state *Platform, game_input *Input
 	SDL_SetRenderDrawColor(Platform->Renderer, 255, 255, 255, 255);
 	SDL_RenderDrawRect(Platform->Renderer, &Platform->screen_outline);
 
+	BEGIN_TIMED_BLOCK(Simulation);
 	{
 		SimulateSpaceShip(&GameState->Player, Input);
 		if(Input->MouseLeft.EndedDown || (Input->MouseRight.EndedDown && Input->MouseRight.Changed)){
 			AddProjectile(GameState, CreateProjectile(GameState->Player.P, GameState->Player.Dir));
 		}
 
-		UpdateAndRenderProjectiles(GameState, Platform->Renderer, GameState->Projectiles);
-		CollideAsteroidsWithProjectiles(GameState, GameState->SimAsteroids, GameState->Projectiles);
-		MoveAsteroids(GameState, GameState->SimAsteroids, &GameState->Player);
+		BEGIN_TIMED_BLOCK(SimulateAndDrawProjectiles);
+		SimulateAndDrawProjectiles(GameState, Platform->Renderer, GameState->Projectiles);
+		END_TIMED_BLOCK(SimulateAndDrawProjectiles);
+
+		BEGIN_TIMED_BLOCK(CollideProjectilesWithAsteroids);
+		CollideProjectilesWithAsteroids(GameState, GameState->SimAsteroids, GameState->Projectiles);
+		END_TIMED_BLOCK(CollideProjectilesWithAsteroids);
+
+		BEGIN_TIMED_BLOCK(SimulateAsteroidsCollidePlayer);
+		SimulateAsteroidsCollidePlayer(GameState, GameState->SimAsteroids, &GameState->Player);
+		END_TIMED_BLOCK(SimulateAsteroidsCollidePlayer);
+
 		if( (GameState->Player.Lives <= 0) || (GameState->AsteroidCount == 0 && (GameState->AsteroidCount != INITIAL_ASTEROID_COUNT)) )
 		{
 			NewGame(GameState);
 			return;
 		}
-		RotateAndTranslateAsteroidsToScreen(GameState, GameState->LocalAsteroids, GameState->SimAsteroids, GameState->AsteroidVertCounts, GameState->ScreenAsteroids);
-		DrawAsteroids(Platform->Renderer, GameState->ScreenAsteroids, GameState->AsteroidVertCounts, GameState->AsteroidCount);
+		BEGIN_TIMED_BLOCK(RotateAndTranslateAsteroids);
+		RotateAndTranslateAsteroids(GameState->SimAsteroids, GameState->ScreenAsteroids, GameState->AsteroidCount);
+		END_TIMED_BLOCK(RotateAndTranslateAsteroids);
+
+		BEGIN_TIMED_BLOCK(RenderAsteroids);
+		RenderAsteroids(Platform->Renderer, GameState->ScreenAsteroids, GameState->AsteroidCount);
+		END_TIMED_BLOCK(RenderAsteroids);
 	}
+	END_TIMED_BLOCK(Simulation);
 
 	DrawSpaceShip(Platform->Renderer, &GameState->Player);
+	BEGIN_TIMED_BLOCK(SwapBuffer);
 	SDL_RenderPresent(Platform->Renderer);
+	END_TIMED_BLOCK(SwapBuffer);
+
+	END_TIMED_BLOCK(UpdateAndRender);
 }
 
 #endif //FUNCTIONS_H

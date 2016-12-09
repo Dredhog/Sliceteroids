@@ -5,8 +5,11 @@
 
 #include <stdint.h>
 #include "globals.h"
+#include "timer.h"
+#include "timer.cpp"
 #include "platform.h"
 #include "game.h"
+#include "game.cpp"
 #include "immintrin.h"
 #include "circular_buffer.h"
 #include <sys/mman.h>
@@ -33,7 +36,8 @@ InitPlatform(platform_state *Platform)
 
 internal void
 AllocateGameMemory(game_memory *GameMemory) {
-	GameMemory->Size = Megabytes(1);
+	//GameMemory->Size = Kilobytes(200);
+	GameMemory->Size = Megabytes(20);
 	GameMemory->BaseAddress = (void*)Gigabytes(10);
 	//LPVOID BaseAddress = (LPVOID*)Gigabytes(10);
 	GameMemory->BaseAddress = mmap(GameMemory->BaseAddress, GameMemory->Size, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
@@ -107,6 +111,11 @@ CleanUp(platform_state *Platform)
 	SDL_Quit();
 }
 
+uint32 SafeTruncateUint64(Uint64 Value){
+	assert(Value <= 0xFFFFFFFF);
+	uint32 Result = (uint32)Value;
+	return Result;
+}
 
 int main(int Count, char *Arguments[])
 {
@@ -117,7 +126,8 @@ int main(int Count, char *Arguments[])
 	AllocateGameMemory(&GameMemory);
 	assert(GameMemory.BaseAddress);
 
-	playback_buffer PlaybackBuffer = NewPlaybackBuffer(500, 10, GameMemory.Size);
+	playback_buffer PlaybackBuffer = NewPlaybackBuffer(32, 10, SafeTruncateUint64(GameMemory.Size));
+	printf("Memory BaseAddress: %lu; GameMemory.Size: %lu MB", (uint64)GameMemory.BaseAddress, GameMemory.Size / (uint64)1e6);
 
 	game_input OldInput = {};
 	game_input NewInput = {};
@@ -127,6 +137,7 @@ int main(int Count, char *Arguments[])
 		Platform.FPS.start();
 
 		Platform.Running = ProcessInput(&OldInput, &NewInput, &Platform.Event);
+
 		if (NewInput.p.EndedDown && NewInput.p.Changed) {
 			Platform.PlaybackStarted = !Platform.PlaybackStarted;
 			if (!Platform.PlaybackStarted) {
@@ -138,24 +149,33 @@ int main(int Count, char *Arguments[])
 			}
 		}
 
+#if 1
 		if (Platform.PlaybackStarted) {
 			PeekAndStepPlaybackBuffer(&PlaybackBuffer, &NewInput, GameMemory.BaseAddress, Platform.FrameCount);
 		}
 		else {
 			PushPlaybackBuffer(&PlaybackBuffer, &NewInput, GameMemory.BaseAddress, Platform.FrameCount);
 		}
+#endif
 
 		UpdateAndRender(&GameMemory, &Platform, &NewInput);
 
 		SDL_Delay(FRAME_DURATION - ((Platform.FPS.get_time() <= FRAME_DURATION) ? Platform.FPS.get_time() : FRAME_DURATION));
 		Platform.FPS.update_avg_fps();
 
+		printf("fps: %f,\n", Platform.FPS.get_average_fps());
+		for(uint32 i = 0; i < DEBUG_Last; i++){
+			printf("%35s:%15lucy,%10lucy/op,%10.2f\n", DEBUG_TABLE_NAMES[i], DEBUG_CYCLE_TABLE[i].CycleCount, DEBUG_CYCLE_TABLE[i].CycleCount/DEBUG_CYCLE_TABLE[i].Calls, 100.0 * (real64)DEBUG_CYCLE_TABLE[i].CycleCount /(real64)DEBUG_CYCLE_TABLE[0].CycleCount);
+		}
+		printf("\n");
+
 		OldInput = NewInput;
 		Platform.FrameCount++;
 	}
 
+	DestroyPlaybackBuffer(&PlaybackBuffer);
 	CleanUp(&Platform);
 	return 0;
 }
 
-//printf("fps: %f;\tprojectiles: %d of %d;\t asteroids: %d of %d\n", GameState.FPS.get_average_fps(), GameState.ProjectileCount, GameState.ProjectileCapacity, GameState.AsteroidCount, GameState.AsteroidCapacity);
+//GameState.ProjectileCount, GameState.ProjectileCapacity, GameState.AsteroidCount, GameState.AsteroidCapacity);

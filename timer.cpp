@@ -1,6 +1,8 @@
+/*
 #include <SDL.h>
 #include <time.h>
 #include "timer.h"
+*/
 
 void Timer::start()
 {
@@ -65,7 +67,7 @@ void Timer::update_avg_fps()
 
 double Timer::get_fps() const noexcept
 {
-    return 1000.f/get_time();
+    return 1000.0/get_time();
 }
 
 double Timer::get_average_fps() const noexcept

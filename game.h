@@ -1,9 +1,11 @@
 #if !defined(TYPES_H)
 #define TYPES_H
 
+/*
 #include "vec2.h"
 #include "platform.h"
 #include "globals.h"
+*/
 
 struct projectile {
 	vec2f P;
@@ -14,15 +16,14 @@ struct projectile {
 struct simulation_asteroid {
 	vec2f 		P;
 	vec2f 		dP;
-	int32 		Radius;
+	real32		Radius;
 	real32 		AngularVelocity;
-};
-
-struct shape_asteroid {
+	uint32		VertCount;
 	vec2f 		Verts[ASTEROID_MAX_VERT_COUNT];
 };
 
 struct screen_asteroid {
+	uint32		VertCount;
 	SDL_Point 	Verts[ASTEROID_MAX_VERT_COUNT+1];
 };
 
@@ -45,19 +46,56 @@ struct game_state
 	space_ship 			Player;
 
 	simulation_asteroid *SimAsteroids;
-	shape_asteroid		*LocalAsteroids;
 	screen_asteroid		*ScreenAsteroids;
-	int32				*AsteroidVertCounts;
-	int32 				AsteroidCount;
-	int32 				AsteroidCapacity;
+	uint32 				AsteroidCount;
+	uint32 				AsteroidCapacity;
 
 	projectile			*Projectiles;
-	int32 				ProjectileCount;
-	int32 				ProjectileCapacity;
+	uint32 				ProjectileCount;
+	uint32 				ProjectileCapacity;
+
 	bool32				Started;
 	bool32 				UseRappidFire{ false };
 	uint32				MagicChecksum;
 };
+
+enum{
+	DEBUG_UpdateAndRender,
+	DEBUG_Simulation,
+	DEBUG_SimulateAndDrawProjectiles,
+	DEBUG_CollideProjectilesWithAsteroids,
+	DEBUG_SimulateAsteroidsCollidePlayer,
+	DEBUG_RotateAndTranslateAsteroids,
+	DEBUG_RenderAsteroids,
+	DEBUG_SwapBuffer,
+	DEBUG_Last,
+};
+
+struct debug_cycle_counter {
+	uint64 CycleCount;
+	uint64 Calls;
+};
+
+#if 1
+debug_cycle_counter DEBUG_CYCLE_TABLE[DEBUG_Last] = {};
+#define BEGIN_TIMED_BLOCK(ID) uint64 StartCycleCount##ID = _rdtsc();
+#define END_TIMED_BLOCK(ID) DEBUG_CYCLE_TABLE[DEBUG_##ID].CycleCount += _rdtsc() - StartCycleCount##ID; \
+							DEBUG_CYCLE_TABLE[DEBUG_##ID].Calls++;
+char DEBUG_TABLE_NAMES[][40] = {
+	"UpdateAndRender",
+	"Simulation",
+	"SimulateAndDrawProjectiles",
+	"CollideProjectilesWithAsteroids",
+	"SimulateAsteroidsCollidePlayer",
+	"RotateAndTranslateAsteroids",
+	"RenderAsteroids",
+	"SwapBuffer",
+};
+
+#else
+#define BEGIN_TIMED_BLOCK(ID)
+#define END_TIMED_BLOCK(ID)
+#endif
 
 void
 UpdateAndRender(game_memory *Memory, platform_state *Platform, game_input *Input);
