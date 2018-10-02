@@ -126,7 +126,7 @@ int main(int Count, char *Arguments[])
 	AllocateGameMemory(&GameMemory);
 	assert(GameMemory.BaseAddress);
 
-	playback_buffer PlaybackBuffer = NewPlaybackBuffer(32, 10, SafeTruncateUint64(GameMemory.Size));
+	playback_buffer PlaybackBuffer = NewPlaybackBuffer(32, 16, SafeTruncateUint64(GameMemory.Size));
 	printf("Memory BaseAddress: %lu; GameMemory.Size: %lu MB", (uint64)GameMemory.BaseAddress, GameMemory.Size / (uint64)1e6);
 
 	game_input OldInput = {};
@@ -142,7 +142,7 @@ int main(int Count, char *Arguments[])
 			Platform.PlaybackStarted = !Platform.PlaybackStarted;
 			if (!Platform.PlaybackStarted) {
 				ClearPlaybackBuffer(&PlaybackBuffer);
-				for(int ButtonIndex = 0; ButtonIndex < 6; ButtonIndex++){
+				for(int ButtonIndex = 0; ButtonIndex < 5; ButtonIndex++){
 					NewInput.Buttons[ButtonIndex].EndedDown = false;
 					NewInput.Buttons[ButtonIndex].Changed = false;
 				}

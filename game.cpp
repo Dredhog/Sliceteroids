@@ -199,36 +199,6 @@ DestroyAsteroid(game_state *GameState, uint32 Index) {
 	GameState->SimAsteroids[Index] = GameState->SimAsteroids[GameState->AsteroidCount];
 	GameState->ScreenAsteroids[Index] = GameState->ScreenAsteroids[GameState->AsteroidCount];
 }
-/*
-internal inline void
-AddAsteroid(game_state *GameState, simulation_asteroid SimAsteroid, shape_asteroid ShapeAsteroid) {
-	assert(GameState->AsteroidCount < GameState->AsteroidCapacity);
-	GameState->SimAsteroids[GameState->AsteroidCount] = SimAsteroid;
-	GameState->LocalAsteroids[GameState->AsteroidCount] = ShapeAsteroid;
-	GameState->AsteroidCount++;
-}*/
-/*
-internal simulation_asteroid
-CreateAsteroid(const simulation_asteroid *parent, float angle)
-{
-	assert(&parent);
-	simulation_asteroid Result = simulation_asteroid{};
-	Result.P = parent->P;
-	Result.dP = parent->dP.rotated(angle)*ASTEROID_BREAK_SPEED_MULTIPLYER;
-	Result.Radius = parent->Radius / 2;
-
-	//Number of points in the polygon,(the first and last are the same)
-	Result.VertCount = rand() % 3 + ASTEROID_MINIMUM_VERT_COUNT;
-	Result.AngularVelocity = (rand() % 200 - 100) / 100.0;
-	for (int i = 0; i < Result.VertCount; ++i)
-	{
-		//Set the initial points for the asteroid polygon
-		Result.LocalVerts[i].X = Result.Radius*cos(2 * M_PI*((i + 1.0 + (rand() % 50 - 25) / 100.0) / (Result.VertCount)));
-		Result.LocalVerts[i].Y = Result.Radius*sin(2 * M_PI*((i + 1.0 + (rand() % 50 - 25) / 100.0) / (Result.VertCount)));
-	}
-	return Result;
-}
-*/
 
 internal inline void
 AddAsteroid(game_state *GameState, simulation_asteroid SimAsteroid) {
@@ -324,9 +294,12 @@ AddAsteroidTopSplit(game_state *GameState, int ParentIndex, projectile Projectil
 		SimResult.Verts[VertCount++] = GetIntersection(P1, P2, SimParent->Verts[0], SimParent->Verts[SimParent->VertCount - 1]);
 	}
 
-	if (VertCount < 1){
+	if(VertCount < 2 || VertCount > ASTEROID_MAX_VERT_COUNT){
 		return;
 	}
+	assert(VertCount >= 2);
+	assert(VertCount <= ASTEROID_MAX_VERT_COUNT);
+
 	SimResult.VertCount = VertCount;
 
 	vec2f CenterOfMass = GetAverageP(SimResult.Verts, SimResult.VertCount);
@@ -375,9 +348,12 @@ AddAsteroidBottomSplit(game_state *GameState, int ParentIndex, projectile Projec
 		SimResult.Verts[VertCount++] = GetIntersection(P1, P2, SimParent->Verts[0], SimParent->Verts[SimParent->VertCount - 1]);
 	}
 
-	if (VertCount < 1){
+	if(VertCount < 2 || VertCount > ASTEROID_MAX_VERT_COUNT){
 		return;
 	}
+	assert(VertCount >= 2);
+	assert(VertCount <= ASTEROID_MAX_VERT_COUNT);
+
 	SimResult.VertCount = VertCount;
 
 	vec2f CenterOfMass = GetAverageP(SimResult.Verts, SimResult.VertCount);
@@ -419,8 +395,8 @@ RotateAndTranslateAsteroids(simulation_asteroid *Input, screen_asteroid *Output,
 	vec2f NewUnitY;
 
 	for (uint32 AsteroidIndex = 0; AsteroidIndex < AsteroidCount; AsteroidIndex++) {
-		Cosine = (real32)cos(AngleRad*Input[AsteroidIndex].AngularVelocity);
-		Sine = (real32)sin(AngleRad*Input[AsteroidIndex].AngularVelocity); 
+		Cosine = (real32)cos((real64)(AngleRad*Input[AsteroidIndex].AngularVelocity));
+		Sine = (real32)sin((real64)(AngleRad*Input[AsteroidIndex].AngularVelocity)); 
 		NewUnitX = vec2f{ Cosine,  Sine};
 		NewUnitY =  vec2f{ -Sine,  Cosine};
 		for (uint32 Index = 0; Index < Input[AsteroidIndex].VertCount; ++Index)
@@ -483,8 +459,7 @@ NewGame(game_state *GameState)
 		do {
 			x = rand() % SCREEN_WIDTH;
 			y = rand() % SCREEN_HEIGHT;
-		} while (sqrt((SCREEN_WIDTH / 2 - x)*(SCREEN_WIDTH / 2 - x) + (SCREEN_HEIGHT / 2 - y)*(SCREEN_HEIGHT / 2 - y)) <=
-			SAFEZONE_RADIUS + ASTEROID_RADIUS);
+		} while (sqrt((SCREEN_WIDTH / 2 - x)*(SCREEN_WIDTH / 2 - x) + (SCREEN_HEIGHT / 2 - y)*(SCREEN_HEIGHT / 2 - y)) <= SAFEZONE_RADIUS + ASTEROID_RADIUS);
 
 		simulation_asteroid newSimAsteroid = CreateSimAsteroid(x, y, (real32)(rand() % 200 - 100) / 100.f, (real32)(rand() % 200 - 100) / 100.f);
 		AddAsteroid(GameState, newSimAsteroid);

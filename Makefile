@@ -1,4 +1,6 @@
+comp = clang++-5.0
+
 all:
-	g++ -std=c++0x -Wall -Wconversion -Wdouble-promotion  platform.cpp -o asteroids `sdl2-config --cflags --libs`
+	${comp} -std=c++11 -O3 -Wall -Wdouble-promotion platform.cpp -o asteroids `sdl2-config --cflags --libs`
 run: 
 	./asteroids
