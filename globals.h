@@ -26,7 +26,7 @@ static const int   PROJECTILE_LENGTH{ 15 };
 static const int   PROJECTILE_OFFSET{ 20 };//The distance from which the projectile begins relative to the players center
 
 //Asteroids
-static const int   	INITIAL_ASTEROID_COUNT{ 5 };
+static const int   	INITIAL_ASTEROID_COUNT{ 10 };
 static const int	ASTEROID_MAX_COUNT{ 20000 };
 static const int   	ASTEROID_RADIUS{ 100 };
 static const int   	ASTEROID_MIN_RADIUS{ 20 };
